@@ -4,7 +4,7 @@ services:
   - type: web
     name: sunuecole-pro
     runtime: node
-    plan: starter            # "free" fonctionne mais la base gratuite expire après 30 jours
+    plan: free
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /healthz
@@ -24,6 +24,6 @@ services:
 
 databases:
   - name: sunuecole-db
-    plan: basic-256mb        # "free" possible pour tester
+    plan: free
     databaseName: sunuecole
     user: sunuecole
