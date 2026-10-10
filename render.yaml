@@ -1,0 +1,29 @@
+# Blueprint Render : service web + base PostgreSQL
+# Render > New > Blueprint > choisir ce dépôt GitHub
+services:
+  - type: web
+    name: sunuecole-pro
+    runtime: node
+    plan: starter            # "free" fonctionne mais la base gratuite expire après 30 jours
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sunuecole-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SUPERADMIN_USERNAME
+        value: kms
+      - key: SUPERADMIN_PASSWORD
+        sync: false          # à saisir dans le tableau de bord Render (10 caractères min.)
+
+databases:
+  - name: sunuecole-db
+    plan: basic-256mb        # "free" possible pour tester
+    databaseName: sunuecole
+    user: sunuecole

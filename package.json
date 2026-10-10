@@ -1,0 +1,20 @@
+{
+  "name": "sunuecole-pro",
+  "version": "0.2.0",
+  "description": "SunuÉcole Pro - SaaS multi-écoles de gestion scolaire (KMS)",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.12.0"
+  }
+}

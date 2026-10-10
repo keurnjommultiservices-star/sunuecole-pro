@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SunuÉcole Pro</title>
+<style>
+:root{--navy:#14284b;--navy2:#1f3a6b;--gold:#b8892b;--bg:#f3f5f9;--line:#d9dee8;--ok:#1d7a4d;--bad:#b3261e;--txt:#1c2433}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--txt);font-size:15px}
+header{background:var(--navy);color:#fff;display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;letter-spacing:.3px}header h1 span{color:var(--gold)}
+header .who{margin-left:auto;font-size:13px;opacity:.95}
+button,.btn{background:var(--navy2);color:#fff;border:0;border-radius:6px;padding:8px 14px;font-size:14px;cursor:pointer}
+button:hover{background:var(--navy)}button.alt{background:#fff;color:var(--navy);border:1px solid var(--line)}
+button.danger{background:var(--bad)}
+nav{display:flex;gap:4px;flex-wrap:wrap;background:#fff;border-bottom:1px solid var(--line);padding:0 16px}
+nav a{padding:12px 14px;cursor:pointer;color:#445;border-bottom:3px solid transparent;font-size:14px}
+nav a.on{color:var(--navy);border-color:var(--gold);font-weight:600}
+main{max-width:1100px;margin:20px auto;padding:0 16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+.kpi b{display:block;font-size:26px;color:var(--navy)}.kpi small{color:#667}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:#eef1f7;text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);font-weight:600}
+td{padding:8px 10px;border-bottom:1px solid #edf0f5;vertical-align:top}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px;width:100%}
+input[type=checkbox]{width:auto;margin-right:6px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.row>*{flex:1;min-width:150px}
+label{font-size:12px;color:#556;display:block;margin-bottom:3px}
+label.chk{font-size:14px;color:var(--txt);display:flex;align-items:center;margin:4px 0}
+h2{margin:0 0 12px;font-size:17px;color:var(--navy)}
+h3{margin:14px 0 4px;font-size:13px;color:var(--navy2);text-transform:uppercase;letter-spacing:.5px}
+.msg{padding:9px 12px;border-radius:6px;margin-bottom:12px;font-size:14px}.msg.err{background:#fde8e6;color:var(--bad)}.msg.ok{background:#e4f4ec;color:var(--ok)}
+.auth{max-width:420px;margin:7vh auto}
+.auth.wide{max-width:640px}
+.tabs2{display:flex;margin-bottom:16px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tabs2 a{flex:1;text-align:center;padding:10px;cursor:pointer;background:#eef1f7;color:#445;font-weight:600;font-size:14px}
+.tabs2 a.on{background:var(--navy);color:#fff}
+.tag{display:inline-block;background:#eef1f7;border-radius:4px;padding:2px 8px;font-size:12px}
+.num{text-align:right}
+.hint{color:#667;font-size:12.5px;margin:6px 0 0}
+.permgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 24px}
+.off{opacity:.55}
+@media print{header,nav,.noprint{display:none!important}.card{border:0}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $ = s => document.querySelector(s);
+const fmt = n => new Intl.NumberFormat('fr-FR').format(n || 0) + ' FCFA';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const slug = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+let S = { token: sessionStorage.getItem('tk'), me: null, tab: null, msg: null, mode: 'login' };
+
+async function api(path, opts = {}) {
+  const r = await fetch('/api' + path, {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json', ...(S.token ? { Authorization: 'Bearer ' + S.token } : {}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401 && S.token && !opts.noLogout) { logout(); }
+  if (!r.ok) throw new Error(d.error || 'Erreur');
+  return d;
+}
+function logout() { sessionStorage.clear(); S = { token: null, me: null, tab: null, msg: null, mode: 'login' }; render(); }
+function flash(text, type = 'ok') { S.msg = { text, type }; }
+function msgHtml() { const m = S.msg; S.msg = null; return m ? `<div class="msg ${m.type}">${esc(m.text)}</div>` : ''; }
+const can = (...p) => S.me.user.role === 'direction' || p.some(x => S.me.user.perms.includes(x));
+
+function tabsFor() {
+  const u = S.me.user;
+  if (u.role === 'superadmin') return [['ecoles', 'Écoles clientes'], ['compte', 'Mon compte']];
+  return [
+    can('dashboard.voir') && ['dash', 'Tableau de bord'],
+    can('eleves.voir', 'eleves.gerer') && ['eleves', 'Élèves'],
+    can('classes.voir', 'classes.gerer') && ['classes', 'Classes & matières'],
+    can('notes.saisir', 'notes.toutes') && ['notes', 'Notes'],
+    can('bulletins.voir') && ['bulletins', 'Bulletins'],
+    can('caisse.voir', 'caisse.encaisser') && ['caisse', 'Caisse'],
+    can('impayes.voir') && ['impayes', 'Impayés'],
+    u.role === 'direction' && ['users', 'Utilisateurs & habilitations'],
+    ['compte', 'Mon compte']
+  ].filter(Boolean);
+}
+
+async function boot() {
+  if (S.token) { try { S.me = await api('/me'); } catch { S.token = null; } }
+  render();
+}
+function setSession(token) { S.token = token; sessionStorage.setItem('tk', token); }
+
+function authScreen() {
+  const reg = S.mode === 'register';
+  $('#app').innerHTML = `<div class="auth ${reg ? 'wide' : ''} card"><h1 style="margin:0 0 4px;color:var(--navy)">Sunu<span style="color:var(--gold)">École</span> Pro</h1>
+    <p style="color:#667;margin:0 0 14px">Gestion scolaire en ligne pour votre établissement</p>
+    <div class="tabs2"><a class="${reg ? '' : 'on'}" onclick="S.mode='login';render()">Se connecter</a><a class="${reg ? 'on' : ''}" onclick="S.mode='register';render()">Inscrire mon école</a></div>
+    <div id="lmsg">${msgHtml()}</div>
+    ${reg ? `
+      <div class="row"><div><label>Nom de l'établissement *</label><input id="rn" oninput="if(!window._codeEdited)$('#rc').value=slug(this.value)"></div>
+      <div><label>Code de l'école * <small>(sert à la connexion)</small></label><input id="rc" oninput="window._codeEdited=true;this.value=slug(this.value)"></div></div>
+      <label>Cycles enseignés</label><div class="row" style="margin-bottom:4px"><label class="chk"><input type="checkbox" class="cy" value="prescolaire">Préscolaire</label><label class="chk"><input type="checkbox" class="cy" value="primaire" checked>Primaire</label><label class="chk"><input type="checkbox" class="cy" value="college">Collège</label><label class="chk"><input type="checkbox" class="cy" value="lycee">Lycée</label></div>
+      <h3>Compte du Directeur (administrateur)</h3>
+      <div class="row"><div><label>Nom complet *</label><input id="rd"></div><div><label>E-mail</label><input id="re" type="email"></div></div>
+      <div class="row"><div><label>Identifiant *</label><input id="ru" autocomplete="username"></div><div><label>Mot de passe * (8 car. min.)</label><input id="rp" type="password" autocomplete="new-password"></div><div><label>Confirmer *</label><input id="rp2" type="password" autocomplete="new-password"></div></div>
+      <p class="hint">Vous serez l'administrateur de votre école : vous créerez ensuite vos utilisateurs (secrétariat, caisse, enseignants…) et choisirez ce que chacun peut faire.</p>
+      <div style="height:10px"></div><button style="width:100%" id="go">Créer mon école</button>` : `
+      <label>Code de l'école</label><input id="lc" placeholder="ex: birago-diop" autocapitalize="off"><div style="height:10px"></div>
+      <label>Identifiant</label><input id="u" autocomplete="username" autocapitalize="off"><div style="height:10px"></div>
+      <label>Mot de passe</label><input id="p" type="password" autocomplete="current-password"><div style="height:14px"></div>
+      <button style="width:100%" id="go">Se connecter</button>`}</div>`;
+  const fail = e => { $('#lmsg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; };
+  if (reg) {
+    window._codeEdited = false;
+    $('#go').onclick = async () => {
+      if ($('#rp').value !== $('#rp2').value) return fail(new Error('Les deux mots de passe ne correspondent pas.'));
+      try {
+        const d = await api('/register', { method: 'POST', body: { school_name: $('#rn').value, code: $('#rc').value, director_name: $('#rd').value, email: $('#re').value || undefined, username: $('#ru').value, password: $('#rp').value, cycles: [...document.querySelectorAll('.cy:checked')].map(c => c.value) } });
+        setSession(d.token); S.me = await api('/me'); S.tab = null; flash(`École créée. Votre code de connexion est « ${d.school_code} » : communiquez-le à votre personnel.`); render();
+      } catch (e) { fail(e); }
+    };
+  } else {
+    const go = async () => {
+      try { const d = await api('/login', { method: 'POST', body: { school_code: $('#lc').value, username: $('#u').value, password: $('#p').value } });
+        setSession(d.token); S.me = await api('/me'); S.tab = null; render(); } catch (e) { fail(e); }
+    };
+    $('#go').onclick = go; $('#p').onkeydown = e => e.key === 'Enter' && go();
+  }
+}
+
+function render() {
+  if (!S.me) return authScreen();
+  const tabs = tabsFor(); if (!S.tab || !tabs.find(t => t[0] === S.tab)) S.tab = tabs[0][0];
+  const u = S.me.user;
+  $('#app').innerHTML = `<header><h1>Sunu<span>École</span> Pro</h1><span>${esc(S.me.school ? S.me.school.name : 'Administration KMS')}</span>
+    <span class="who">${esc(u.name)} · <span class="tag" style="color:#14284b">${esc((S.me.roles[u.role] || {}).label || u.role)}</span> <button class="alt" style="margin-left:8px;padding:5px 10px" onclick="logout()">Quitter</button></span></header>
+    <nav>${tabs.map(t => `<a class="${t[0] === S.tab ? 'on' : ''}" onclick="S.tab='${t[0]}';render()">${t[1]}</a>`).join('')}</nav><main id="view">Chargement…</main>`;
+  VIEWS[S.tab]().catch(e => { $('#view').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; });
+}
+const view = html => { $('#view').innerHTML = msgHtml() + html; };
+const opts = (arr, v = 'id', l = 'name', sel) => arr.map(o => `<option value="${o[v]}" ${o[v] == sel ? 'selected' : ''}>${esc(typeof l === 'function' ? l(o) : o[l])}</option>`).join('');
+const val = id => $('#' + id).value;
+async function submit(fn, okText) { try { await fn(); flash(okText); } catch (e) { flash(e.message, 'err'); } render(); }
+
+function permBoxes(selected, cls) {
+  const groups = {}; S.me.catalog.forEach(p => (groups[p.group] = groups[p.group] || []).push(p));
+  return `<div class="permgrid">${Object.entries(groups).map(([g, ps]) => `<div><h3>${esc(g)}</h3>${ps.map(p =>
+    `<label class="chk"><input type="checkbox" class="${cls}" value="${p.key}" ${selected.includes(p.key) ? 'checked' : ''}>${esc(p.label)}</label>`).join('')}</div>`).join('')}</div>`;
+}
+const checked = cls => [...document.querySelectorAll('.' + cls + ':checked')].map(c => c.value);
+function applyPreset(selId, cls) {
+  const perms = (S.me.roles[val(selId)] || {}).perms || [];
+  document.querySelectorAll('.' + cls).forEach(c => { c.checked = perms.includes(c.value); });
+}
+
+const VIEWS = {
+  async ecoles() {
+    const rows = await api('/schools');
+    view(`<div class="card"><h2>Écoles inscrites (${rows.length})</h2><p class="hint" style="margin-top:0">Les écoles s'inscrivent elles-mêmes depuis la page d'accueil. Vous pouvez suspendre un abonnement ou réinitialiser le mot de passe d'un Directeur.</p>
+      <table><tr><th>École</th><th>Code</th><th>Directeur</th><th class="num">Élèves</th><th class="num">Utilisateurs</th><th>Inscrite le</th><th>Statut</th><th></th></tr>
+      ${rows.map(s => `<tr><td>${esc(s.name)}<br><small style="color:#667">${esc(s.cycles)}</small></td><td><span class="tag">${esc(s.slug)}</span></td><td>${esc(s.director || '')}<br><small style="color:#667">${esc(s.director_email || '')}</small></td>
+      <td class="num">${s.students}</td><td class="num">${s.users}</td><td>${esc(String(s.created_at).slice(0, 10))}</td><td>${s.active ? 'Actif' : 'Suspendu'}</td>
+      <td style="white-space:nowrap"><button class="alt" onclick="submit(()=>api('/schools/${s.id}',{method:'PATCH',body:{active:${!s.active}}}),'Statut mis à jour.')">${s.active ? 'Suspendre' : 'Réactiver'}</button>
+      <button class="alt" onclick="resetDir(${s.id})">Mot de passe directeur</button></td></tr>`).join('') || '<tr><td colspan=8>Aucune école inscrite pour le moment.</td></tr>'}</table></div>`);
+  },
+  async dash() {
+    const d = await api('/dashboard'); const L = { prescolaire: 'Préscolaire', primaire: 'Primaire', college: 'Collège', lycee: 'Lycée' };
+    view(`<div class="grid"><div class="kpi"><b>${d.eleves}</b><small>Élèves actifs</small></div><div class="kpi"><b>${d.classes}</b><small>Classes</small></div>
+      <div class="kpi"><b>${d.personnel}</b><small>Comptes du personnel</small></div><div class="kpi"><b>${fmt(d.encaisse_mois)}</b><small>Encaissé ce mois</small></div>
+      <div class="kpi"><b>${fmt(d.encaisse_total)}</b><small>Total encaissé</small></div></div>
+      <div class="card" style="margin-top:16px"><h2>Effectifs par cycle</h2><table>${d.par_cycle.map(c => `<tr><td>${L[c.cycle]}</td><td class="num">${c.eleves}</td></tr>`).join('') || '<tr><td>Aucune classe pour le moment</td></tr>'}</table></div>`);
+  },
+  async eleves() {
+    const [cl, st] = await Promise.all([api('/classes').catch(() => []), api('/students' + (S.q ? '?q=' + encodeURIComponent(S.q) : ''))]);
+    view(`${can('eleves.gerer') ? `<div class="card"><h2>Inscrire un élève</h2><div class="row"><div><label>Prénom</label><input id="fn"></div><div><label>Nom</label><input id="ln"></div>
+      <div><label>Classe</label><select id="cl"><option value="">—</option>${opts(cl)}</select></div><div><label>Sexe</label><select id="sx"><option>F</option><option>M</option></select></div></div>
+      <div class="row"><div><label>Tuteur</label><input id="gn"></div><div><label>Téléphone tuteur</label><input id="gp"></div><div><label>Date de naissance</label><input id="bd" type="date"></div></div>
+      <button onclick="submit(()=>api('/students',{method:'POST',body:{first_name:val('fn'),last_name:val('ln'),class_id:val('cl')||null,sex:val('sx'),guardian_name:val('gn'),guardian_phone:val('gp'),birth_date:val('bd')||null}}),'Élève inscrit.')">Inscrire</button></div>` : ''}
+      <div class="card"><div class="row"><input id="q" placeholder="Rechercher (nom, matricule) puis Entrée" value="${esc(S.q || '')}" onkeydown="if(event.key==='Enter'){S.q=this.value;render()}"></div>
+      <table><tr><th>Matricule</th><th>Nom</th><th>Classe</th><th>Tuteur</th><th>Téléphone</th></tr>
+      ${st.map(s => `<tr><td>${esc(s.matricule)}</td><td>${esc(s.last_name)} ${esc(s.first_name)}</td><td>${esc(s.class_name || '—')}</td><td>${esc(s.guardian_name || '')}</td><td>${esc(s.guardian_phone || '')}</td></tr>`).join('') || '<tr><td colspan=5>Aucun élève</td></tr>'}</table></div>`);
+  },
+  async classes() {
+    const cl = await api('/classes'); const isDir = S.me.user.role === 'direction';
+    const teachers = isDir ? (await api('/users')).filter(u => u.active) : [];
+    const subs = {}; for (const c of cl) subs[c.id] = await api(`/classes/${c.id}/subjects`);
+    view(`${can('classes.gerer') ? `<div class="card"><h2>Nouvelle classe</h2><div class="row"><div><label>Nom</label><input id="cn" placeholder="ex: 5ème A"></div>
+      <div><label>Cycle</label><select id="cc"><option value="prescolaire">Préscolaire</option><option value="primaire">Primaire</option><option value="college">Collège</option><option value="lycee">Lycée</option></select></div>
+      <div><label>Mensualité (FCFA)</label><input id="cf" type="number" min="0"></div></div>
+      <button onclick="submit(()=>api('/classes',{method:'POST',body:{name:val('cn'),cycle:val('cc'),monthly_fee:val('cf')}}),'Classe créée.')">Créer</button></div>` : ''}
+      ${cl.map(c => `<div class="card"><h2>${esc(c.name)} <span class="tag">${esc(c.cycle)}</span> <small style="font-weight:400;color:#667">· ${c.effectif} élèves · ${fmt(c.monthly_fee)}/mois</small></h2>
+      <table><tr><th>Matière</th><th class="num">Coef.</th><th>Enseignant</th></tr>${subs[c.id].map(s => `<tr><td>${esc(s.name)}</td><td class="num">${s.coef}</td><td>${esc(s.teacher || '—')}</td></tr>`).join('') || '<tr><td colspan=3>Aucune matière</td></tr>'}</table>
+      ${isDir ? `<div class="row" style="margin-top:12px"><div><label>Matière</label><input id="sn${c.id}"></div><div><label>Coef.</label><input id="sc${c.id}" type="number" value="1" step="0.5"></div>
+      <div><label>Enseignant</label><select id="st${c.id}"><option value="">—</option>${opts(teachers, 'id', 'full_name')}</select></div>
+      <div style="flex:0"><label>&nbsp;</label><button onclick="submit(()=>api('/subjects',{method:'POST',body:{class_id:${c.id},name:val('sn${c.id}'),coef:val('sc${c.id}'),teacher_id:val('st${c.id}')||null}}),'Matière ajoutée.')">Ajouter</button></div></div>` : ''}</div>`).join('') || '<div class="card">Aucune classe. ' + (can('classes.gerer') ? 'Créez la première ci-dessus.' : '') + '</div>'}`);
+  },
+  async notes() {
+    const subs = await api('/my-subjects');
+    if (!subs.length) return view('<div class="card">Aucune matière ne vous est affectée. Demandez à la Direction de vous affecter vos matières (menu Classes &amp; matières).</div>');
+    const cur = S.sub && subs.find(s => s.id == S.sub) ? S.sub : subs[0].id, term = S.term || 1;
+    const rows = await api(`/grades?subject_id=${cur}&term=${term}`);
+    view(`<div class="card"><h2>Saisie des notes (sur 20)</h2><div class="row"><div><label>Matière / classe</label><select onchange="S.sub=this.value;render()">${opts(subs, 'id', s => s.class_name + ' — ' + s.name, cur)}</select></div>
+      <div><label>Trimestre</label><select onchange="S.term=this.value;render()">${[1, 2, 3].map(t => `<option ${t == term ? 'selected' : ''} value="${t}">Trimestre ${t}</option>`).join('')}</select></div></div>
+      <table><tr><th>Matricule</th><th>Élève</th><th style="width:130px">Note</th></tr>${rows.map(r => `<tr><td>${esc(r.matricule)}</td><td>${esc(r.last_name)} ${esc(r.first_name)}</td>
+      <td><input class="g" data-id="${r.student_id}" type="number" min="0" max="20" step="0.25" value="${r.value ?? ''}"></td></tr>`).join('') || '<tr><td colspan=3>Aucun élève dans cette classe</td></tr>'}</table>
+      <div style="margin-top:12px"><button onclick="submit(()=>api('/grades',{method:'POST',body:{subject_id:${cur},term:${term},grades:[...document.querySelectorAll('.g')].map(i=>({student_id:+i.dataset.id,value:i.value}))}}),'Notes enregistrées.')">Enregistrer</button></div></div>`);
+  },
+  async bulletins() {
+    const st = await api('/students'); const sel = S.bs && st.find(s => s.id == S.bs) ? S.bs : (st[0] && st[0].id), term = S.bt || 1;
+    let b = '';
+    if (sel) {
+      const d = await api(`/bulletin/${sel}?term=${term}`);
+      b = `<div class="card"><h2>Bulletin — ${esc(d.student.last_name)} ${esc(d.student.first_name)} <span class="tag">${esc(d.student.class_name || '')}</span> · Trimestre ${d.term}</h2>
+      <table><tr><th>Matière</th><th>Enseignant</th><th class="num">Coef.</th><th class="num">Note /20</th></tr>${d.rows.map(r => `<tr><td>${esc(r.name)}</td><td>${esc(r.teacher || '—')}</td><td class="num">${r.coef}</td><td class="num">${r.value ?? '—'}</td></tr>`).join('')}</table>
+      <p><b>Moyenne :</b> ${d.moyenne ?? '—'} / 20 · <b>Rang :</b> ${d.rang ? d.rang + ' / ' + d.effectif : '—'} · <b>Mention :</b> ${d.mention || '—'}</p>
+      <button class="noprint" onclick="window.print()">Imprimer</button></div>`;
+    }
+    view(`<div class="card noprint"><div class="row"><div><label>Élève</label><select onchange="S.bs=this.value;render()">${opts(st, 'id', s => s.last_name + ' ' + s.first_name + ' (' + (s.class_name || '—') + ')', sel)}</select></div>
+      <div><label>Trimestre</label><select onchange="S.bt=this.value;render()">${[1, 2, 3].map(t => `<option ${t == term ? 'selected' : ''} value="${t}">Trimestre ${t}</option>`).join('')}</select></div></div></div>${b}`);
+  },
+  async caisse() {
+    const canPay = can('caisse.encaisser');
+    const [st, pays] = await Promise.all([canPay ? api('/students') : [], can('caisse.voir', 'caisse.encaisser') ? api('/payments') : []]);
+    view(`${canPay ? `<div class="card"><h2>Encaisser un paiement</h2><div class="row"><div><label>Élève</label><select id="ps">${opts(st, 'id', s => s.last_name + ' ' + s.first_name + ' (' + (s.class_name || '—') + ')')}</select></div>
+      <div><label>Montant (FCFA)</label><input id="pa" type="number" min="1"></div><div><label>Motif</label><input id="pl" value="Mensualité"></div>
+      <div><label>Mode</label><select id="pm"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="cheque">Chèque</option><option value="virement">Virement</option></select></div></div>
+      <button onclick="submit(()=>api('/payments',{method:'POST',body:{student_id:val('ps'),amount:val('pa'),label:val('pl'),method:val('pm')}}),'Paiement enregistré.')">Encaisser</button></div>` : ''}
+      <div class="card"><h2>Derniers paiements — total ${fmt(pays.reduce((a, p) => a + p.amount, 0))}</h2><table><tr><th>Reçu</th><th>Date</th><th>Élève</th><th>Motif</th><th>Mode</th><th class="num">Montant</th><th>Caissier</th></tr>
+      ${pays.map(p => `<tr><td>${esc(p.receipt_no)}</td><td>${esc(String(p.created_at).slice(0, 10))}</td><td>${esc(p.last_name)} ${esc(p.first_name)}</td><td>${esc(p.label)}</td><td>${esc(p.method)}</td><td class="num">${fmt(p.amount)}</td><td>${esc(p.cashier || '')}</td></tr>`).join('') || '<tr><td colspan=7>Aucun paiement</td></tr>'}</table></div>`);
+  },
+  async impayes() {
+    const d = await api('/impayes');
+    view(`<div class="card"><h2>Élèves en retard de paiement</h2><p class="hint" style="margin-top:0">Estimation : mensualité × ${d.mois_ecoules} mois écoulés depuis octobre, moins les paiements reçus.</p>
+      <table><tr><th>Élève</th><th>Classe</th><th>Tél. tuteur</th><th class="num">Attendu</th><th class="num">Payé</th><th class="num">Reste</th></tr>
+      ${d.rows.map(r => `<tr><td>${esc(r.last_name)} ${esc(r.first_name)}</td><td>${esc(r.class_name)}</td><td>${esc(r.guardian_phone || '')}</td><td class="num">${fmt(r.attendu)}</td><td class="num">${fmt(r.paye)}</td><td class="num"><b>${fmt(r.attendu - r.paye)}</b></td></tr>`).join('') || '<tr><td colspan=6>Aucun impayé</td></tr>'}</table></div>`);
+  },
+  async users() {
+    const rows = await api('/users'); const roles = S.me.roles;
+    const roleOpts = k => Object.entries(roles).map(([r, v]) => `<option value="${r}" ${r === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
+    view(`<div class="card"><h2>Ajouter un utilisateur</h2>
+      <p class="hint" style="margin-top:0">Choisissez un rôle comme point de départ, puis cochez exactement ce que cette personne peut faire. Vos collaborateurs se connectent avec le code d'école <span class="tag">${esc((S.me.school || {}).code || '')}</span> et leur identifiant.</p>
+      <div class="row"><div><label>Nom complet *</label><input id="un"></div><div><label>Identifiant *</label><input id="uu" autocapitalize="off"></div>
+      <div><label>Mot de passe provisoire * (8 car. min.)</label><input id="up" type="text" autocomplete="off"></div>
+      <div><label>Rôle (modèle)</label><select id="ur" onchange="applyPreset('ur','np')">${roleOpts('enseignant')}</select></div></div>
+      ${permBoxes(roles.enseignant.perms, 'np')}
+      <div style="margin-top:14px"><button onclick="submit(()=>api('/users',{method:'POST',body:{full_name:val('un'),username:val('uu'),password:val('up'),role:val('ur'),permissions:checked('np')}}),'Utilisateur créé. Communiquez-lui le code d\\'école, son identifiant et son mot de passe provisoire.')">Créer l'utilisateur</button></div></div>
+      <div class="card"><h2>Utilisateurs de l'école (${rows.length})</h2>
+      ${rows.map(u => `<div style="border-top:1px solid var(--line);padding:10px 0" class="${u.active ? '' : 'off'}">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${esc(u.full_name)}</b><span class="tag">${esc(roles[u.role].label)}</span><small style="color:#667">@${esc(u.username)}</small>${u.active ? '' : '<span class="tag">Désactivé</span>'}
+        <span style="margin-left:auto"><button class="alt" onclick="S.edit=S.edit==${u.id}?null:${u.id};render()">${S.edit == u.id ? 'Fermer' : 'Modifier / habilitations'}</button></span></div>
+        ${S.edit == u.id ? `<div style="margin-top:12px"><div class="row"><div><label>Nom complet</label><input id="en" value="${esc(u.full_name)}"></div>
+          <div><label>Rôle (modèle)</label><select id="er" onchange="applyPreset('er','ep')">${roleOpts(u.role)}</select></div>
+          <div><label>Nouveau mot de passe (laisser vide = inchangé)</label><input id="epw" type="text" autocomplete="off"></div></div>
+          ${u.role === 'direction' ? '<p class="hint">Le rôle Direction dispose de toutes les habilitations.</p>' : ''}
+          ${permBoxes(u.permissions, 'ep')}
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button onclick="saveUser(${u.id})">Enregistrer</button>
+          <button class="alt" onclick="submit(()=>api('/users/${u.id}',{method:'PATCH',body:{active:${!u.active}}}),'${u.active ? 'Compte désactivé.' : 'Compte réactivé.'}')">${u.active ? 'Désactiver le compte' : 'Réactiver le compte'}</button></div></div>` : ''}</div>`).join('')}</div>`);
+  },
+  async compte() {
+    view(`<div class="card" style="max-width:480px"><h2>Changer mon mot de passe</h2>
+      <label>Mot de passe actuel</label><input id="cp" type="password" autocomplete="current-password"><div style="height:10px"></div>
+      <label>Nouveau mot de passe (8 caractères min.)</label><input id="np1" type="password" autocomplete="new-password"><div style="height:14px"></div>
+      <button onclick="submit(()=>api('/me/password',{method:'POST',body:{current:val('cp'),password:val('np1')}}),'Mot de passe modifié.')">Modifier</button></div>`);
+  }
+};
+function saveUser(id) {
+  submit(() => api('/users/' + id, { method: 'PATCH', body: { full_name: val('en'), role: val('er'), permissions: checked('ep'), ...(val('epw') ? { password: val('epw') } : {}) } }), 'Habilitations enregistrées.');
+}
+function resetDir(id) {
+  const p = prompt('Nouveau mot de passe pour le Directeur (8 caractères minimum) :');
+  if (p) submit(() => api(`/schools/${id}/reset-director`, { method: 'POST', body: { password: p } }), 'Mot de passe du Directeur réinitialisé. Communiquez-le-lui.');
+}
+boot();
+</script>
+</body>
+</html>
